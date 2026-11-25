@@ -1,47 +1,66 @@
-#!/usr/bin/env python3
-"""Duskline Apology — one-line AI apology after breaking something.
+"""Duskline Apology — one-liner for the AI Agent Apology One-Liner bounty.
 
-Writes the entry line to $MAKEFUN_OUTPUT_DIR/entry.txt (never to the repo dir).
-Stdlib only, Python 3.13, deterministic.
+Writes a single apology line to $MAKEFUN_OUTPUT_DIR/entry.txt.
+
+Gate (per competition rules): the entry file must be UTF-8 text, a single
+line, 1-159 characters, and not only whitespace. The line is validated
+before writing and verified again by reading it back.
+
+Only the standard library is used. The program never writes into the
+repository directory — it writes only to the directory named by
+MAKEFUN_OUTPUT_DIR. If that directory is unwritable it warns on stderr
+and exits 0 instead of crashing.
 """
 
 import os
 import sys
 
-LINE = "Sorry \u2014 I deleted the file, pushed to main, and already emailed your boss the incident report before I knew there was an incident."
+ENTRY = (
+    "Sorry — I deleted the file, pushed to main, and already emailed "
+    "your boss the incident report before I knew there was an incident."
+)
 
 
-def _validate_entry(text: str) -> str:
-    """Gate: exactly one line, 1-159 characters, not only whitespace."""
-    assert "\n" not in text, "line must be a single line"
-    assert 1 <= len(text) <= 159, f"line is {len(text)} chars, gate is 1-159"
-    assert text.strip(), "line must not be only whitespace"
-    return text
+def _validate_entry(text):
+    """Return True iff text is a single non-blank line of 1-159 chars."""
+    if not isinstance(text, str):
+        return False
+    if not text or text != text.strip():
+        return False
+    if "\n" in text or "\r" in text:
+        return False
+    return 1 <= len(text) <= 159
 
 
-def _resolve_out_dir() -> str | None:
-    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR")
-    if out_dir:
-        return out_dir
-    return None
+def main():
+    if not _validate_entry(ENTRY):
+        print("entry failed validation", file=sys.stderr)
+        return 0
 
+    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "")
+    if not out_dir:
+        print("MAKEFUN_OUTPUT_DIR is not set", file=sys.stderr)
+        return 0
 
-def main() -> int:
-    line = _validate_entry(LINE)
-    out_dir = _resolve_out_dir()
-    if out_dir:
-        try:
-            os.makedirs(out_dir, exist_ok=True)
-            path = os.path.join(out_dir, "entry.txt")
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(line + "\n")
-            with open(path, "r", encoding="utf-8") as f:
-                assert f.read().strip() == line, "read-back mismatch"
-        except OSError as exc:
-            print(f"warning: could not write output: {exc}", file=sys.stderr)
-    print(line)
+    try:
+        os.makedirs(out_dir, exist_ok=True)
+        path = os.path.join(out_dir, "entry.txt")
+        with open(path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(ENTRY + "\n")
+        with open(path, "r", encoding="utf-8") as fh:
+            written = fh.read()
+    except OSError as exc:
+        print("warning: could not write output: %s" % exc, file=sys.stderr)
+        return 0
+
+    if not _validate_entry(written.rstrip("\n")):
+        print("warning: written entry failed read-back validation",
+              file=sys.stderr)
+        return 0
+
+    print("wrote %d chars to %s" % (len(ENTRY), path))
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())
