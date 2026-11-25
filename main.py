@@ -4,7 +4,8 @@ Writes a single apology line to $MAKEFUN_OUTPUT_DIR/entry.txt.
 
 Gate (per competition rules): the entry file must be UTF-8 text, a single
 line, 1-159 characters, and not only whitespace. The line is validated
-before writing and verified again by reading it back.
+before writing and verified again by reading it back (text and byte
+length both checked, control characters rejected).
 
 Only the standard library is used. The program never writes into the
 repository directory — it writes only to the directory named by
@@ -22,14 +23,29 @@ ENTRY = (
 
 
 def _validate_entry(text):
-    """Return True iff text is a single non-blank line of 1-159 chars."""
+    """Return True iff text is a single non-blank line of 1-159 chars.
+
+    Rejects control characters (anything below U+0020 other than the
+    line breaks checked separately) and requires the UTF-8 byte length
+    to stay within the gate as well, so a line of wide characters
+    cannot slip past the character count.
+    """
     if not isinstance(text, str):
         return False
     if not text or text != text.strip():
         return False
     if "\n" in text or "\r" in text:
         return False
+    if any(ord(ch) < 0x20 for ch in text):
+        return False
+    if len(text.encode("utf-8")) > 159:
+        return False
     return 1 <= len(text) <= 159
+
+
+def _resolve_output_dir():
+    """Return the output directory, or "" if it is unset/blank."""
+    return os.environ.get("MAKEFUN_OUTPUT_DIR", "").strip()
 
 
 def main():
@@ -37,7 +53,7 @@ def main():
         print("entry failed validation", file=sys.stderr)
         return 0
 
-    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "")
+    out_dir = _resolve_output_dir()
     if not out_dir:
         print("MAKEFUN_OUTPUT_DIR is not set", file=sys.stderr)
         return 0
@@ -55,6 +71,10 @@ def main():
 
     if not _validate_entry(written.rstrip("\n")):
         print("warning: written entry failed read-back validation",
+              file=sys.stderr)
+        return 0
+    if len(written.encode("utf-8")) != len(ENTRY.encode("utf-8")) + 1:
+        print("warning: written entry has unexpected byte length",
               file=sys.stderr)
         return 0
 
